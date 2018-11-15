@@ -8,6 +8,7 @@ from bson import json_util
 from bson.objectid import ObjectId
 import uuid
 import base64
+import random
 
 from pymongo import MongoClient
 import os
@@ -15,6 +16,7 @@ import os
 from flask_cors import CORS, cross_origin
 
 from models.user import User
+from models.trap import Trap
 
 app = Flask(__name__)
 
@@ -57,8 +59,9 @@ def get_all_users ():
 @app.route("/create_user", methods=['POST'])
 def create_user():
   req = request.get_json(silent=True)
+  role = role_decider()
   api_token = uuid.uuid4().hex
-  user = User(req.get('name'), req.get('role'), api_token)
+  user = User(req.get('name'), role, api_token)
   resp = users.insert_one(user.__dict__)
   user_id = resp.inserted_id
   u = User.get(users, user_id)
@@ -66,9 +69,11 @@ def create_user():
   return redirect(f"/users/{user_id}")
 
 @app.route("/users/<id>")
+@cross_origin()
 def get_user(id):
   user = users.find_one({"_id": ObjectId(id)})
-  return json_util.dumps(user, default=lambda o: o.__dict__)
+  u = User.get(users, str(user.get('_id')))
+  return json_util.dumps(u.__dict__, default=lambda o: o.__dict__)
 
 @app.route("/traps")
 @cross_origin()
@@ -76,6 +81,14 @@ def get_user(id):
 def get_all_traps ():
   #Display the Uncompleted Tasks
   traps_result = traps.find()
+  return json_util.dumps(traps_result, default=lambda o: o.__dict__)
+
+@app.route("/traps/<role>")
+@cross_origin()
+@login_required
+def get_role_traps (role):
+  #Display the Uncompleted Tasks
+  traps_result = traps.find({'user.role': role})
   return json_util.dumps(traps_result, default=lambda o: o.__dict__)
 
 @app.route("/create_trap", methods=['POST'])
@@ -116,6 +129,15 @@ def login():
   login_user(user1)
   return json_util.dumps(user1.__dict__, default=lambda o: o.__dict__)
 
+@app.route("/login/api_token", methods=['POST'])
+def login_api_token():
+  req = request.get_json(silent=True)
+  api_token = req.get('api_token')
+  user1 = User.get_by_api_token(users, api_token)
+  if user1 is not None:
+      login_user(user1)
+  return json_util.dumps(current_user.__dict__, default=lambda o: o.__dict__)
+
 @app.route("/logout", methods=['POST'])
 def logout():
   logout_user()
@@ -126,6 +148,24 @@ def load_user_from_header(header_val):
     header_val = header_val.replace('Basic ', '', 1)
     u = User.get_by_api_token(users, header_val)
     return u
+
+
+def role_decider():
+  roles = ['hero', 'villian']
+  role = random.choice(roles)
+
+  h = list(users.find({'role': 'hero'}))
+  hero_role = len(h)
+
+  v = list(users.find({'role': 'villian'}))
+  villian_role = len(v)
+
+  if hero_role < villian_role:
+      return 'hero'
+  elif villian_role < hero_role:
+      return 'villian'
+
+  return role
 
 # @app.route("/action3", methods=['POST'])
 
