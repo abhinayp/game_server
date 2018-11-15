@@ -1,11 +1,16 @@
 from flask import Flask, render_template,request,redirect,url_for # For flask implementation from bson import ObjectId # For ObjectId to work
 from flask import jsonify
-import json
 from flask import Response
+
+import json
 from bson import json_util
+from bson.objectid import ObjectId
+
 from pymongo import MongoClient
 import os
+
 from flask_cors import CORS, cross_origin
+
 from models.user import User
 
 app = Flask(__name__)
@@ -44,7 +49,13 @@ def create_user():
   req = request.get_json(silent=True)
   user = User(req.get('name'), req.get('role'))
   resp = users.insert_one(user.__dict__)
-  return json_util.dumps(resp, default=lambda o: o.__dict__)
+  user_id = resp.inserted_id
+  return redirect(f"/users/{user_id}")
+
+@app.route("/users/<id>")
+def get_user(id):
+  user = users.find_one({"_id": ObjectId(id)})
+  return json_util.dumps(user, default=lambda o: o.__dict__)
 
 
 # @app.route("/action3", methods=['POST'])
