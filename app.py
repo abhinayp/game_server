@@ -17,6 +17,7 @@ from flask_cors import CORS, cross_origin
 
 from models.user import User
 from models.trap import Trap
+from models.game import Game
 
 app = Flask(__name__)
 
@@ -33,6 +34,9 @@ client = MongoClient("mongodb://127.0.0.1:27017") #host uri
 db = client.adventure_game #Select the database
 users = db.users #Select the collection name
 traps = db.traps
+detraps = db.detraps
+games = db.games
+game = 0
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -48,6 +52,8 @@ def newEncoder(o):
         return str(o)
     return o.__str__
 
+# ------------------- USERS -----------------------
+
 @app.route("/")
 @app.route("/users")
 @cross_origin()
@@ -61,11 +67,13 @@ def create_user():
   req = request.get_json(silent=True)
   role = role_decider()
   api_token = uuid.uuid4().hex
-  user = User(req.get('name'), role, api_token)
+  user = User(req.get('name'), 'hero', api_token)
   resp = users.insert_one(user.__dict__)
   user_id = resp.inserted_id
   u = User.get(users, user_id)
   login_user(u)
+  createGame()
+  generate_traps_grid()
   return redirect(f"/users/{user_id}")
 
 @app.route("/users/<id>")
@@ -75,12 +83,15 @@ def get_user(id):
   u = User.get(users, str(user.get('_id')))
   return json_util.dumps(u.__dict__, default=lambda o: o.__dict__)
 
+
+# ------------------- TRAPS -----------------------
+
 @app.route("/traps")
 @cross_origin()
 @login_required
 def get_all_traps ():
   #Display the Uncompleted Tasks
-  traps_result = traps.find()
+  traps_result = traps.find({'game.user.id': current_user.id})
   return json_util.dumps(traps_result, default=lambda o: o.__dict__)
 
 @app.route("/traps/<role>")
@@ -88,7 +99,7 @@ def get_all_traps ():
 @login_required
 def get_role_traps (role):
   #Display the Uncompleted Tasks
-  traps_result = traps.find({'user.role': role})
+  traps_result = traps.find({'user.role': role, 'game.user.id': current_user.id})
   return json_util.dumps(traps_result, default=lambda o: o.__dict__)
 
 @app.route("/create_trap", methods=['POST'])
@@ -120,6 +131,75 @@ def get_trap(id):
   trap = traps.find_one({"_id": ObjectId(id)})
   return json_util.dumps(trap, default=lambda o: o.__dict__)
 
+def removeTraps(game_id):
+  traps.delete_many({'game._id': game_id})
+
+
+# ------------------- DETRAPS -----------------------
+
+@app.route("/detraps/<role>")
+@cross_origin()
+@login_required
+def get_role_detraps (role):
+  #Display the Uncompleted Tasks
+  traps_result = detraps.find({'game.user.id': current_user.id})
+  return json_util.dumps(traps_result, default=lambda o: o.__dict__)
+
+@app.route("/create_detrap", methods=['POST'])
+@login_required
+def create_detrap():
+  req = request.get_json(silent=True)
+
+  trap = Trap(req.get('x'), req.get('y'), current_user, getGame(current_user.id))
+  resp = detraps.insert_one(trap.__dict__)
+  trap_id = resp.inserted_id
+  return redirect(f"/detraps/{trap_id}")
+
+@app.route("/detraps/<id>")
+def get_detrap(id):
+  trap = detraps.find_one({"_id": ObjectId(id)})
+  return json_util.dumps(trap, default=lambda o: o.__dict__)
+
+def removeDetraps(game_id):
+  detraps.delete_many({'game._id': game_id})
+
+
+# ------------------- GAME ---------------------------------
+
+@app.route("/finish_game", methods=['POST'])
+@login_required
+def finish_game():
+  g = getGame(current_user.id)
+  removeGame(current_user.id)
+  removeTraps(g.get('_id'))
+  removeDetraps(g.get('_id'))
+  return json_util.dumps({'status': True})
+
+@app.route("/generate_game", methods=['POST'])
+@login_required
+def generate_game():
+  createGame()
+  generate_traps_grid()
+  return json_util.dumps({'status': True})
+
+def createGame():
+    global game
+    game += 1
+    g = Game(game, current_user)
+    games.insert_one(g.__dict__)
+
+def getGame(id):
+    g = games.find_one({"user.id": id})
+    return g
+
+def removeGame(id):
+    g = games.delete_one({"user.id": id})
+
+def removeAllGame():
+    g = games.delete_many({})
+
+
+# ------------------- AUTHENTICATION -----------------------
 
 @app.route("/login", methods=['POST'])
 def login():
@@ -167,7 +247,24 @@ def role_decider():
 
   return role
 
+def generate_traps_grid():
+    total = random.randint(10, 25)
+    for i in range(0, total):
+      x = random.randint(0, 15)
+      y = random.randint(0, 15)
+      traps_result = list(traps.find({'user.role': 'villian'}))
+      trap_created = list(filter(lambda x: (x.get('x') == x and x.get('y') == y) , traps_result))
+      if len(trap_created) < 1:
+        trap = Trap(x, y, User.get(users, '5bee0c3ae93f73258b1d49f7'), getGame(current_user.id))
+        resp = traps.insert_one(trap.__dict__)
+
+def deleteAllTraps():
+    traps.delete_many({})
+    detraps.delete_many({})
+
 # @app.route("/action3", methods=['POST'])
+deleteAllTraps()
+removeAllGame()
 
 if __name__ == "__main__":
   app.run()
