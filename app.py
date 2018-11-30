@@ -180,14 +180,18 @@ def finish_game():
 @app.route("/generate_game", methods=['POST'])
 @login_required
 def generate_game():
-  createGame()
-  generate_traps_grid()
+
+  riddlesTypes = Riddle.riddleTypes()
+  riddle_random = random.choice(riddlesTypes)
+
+  createGame(riddle_random)
+  generate_traps_grid(riddle_random)
   return json_util.dumps({'status': True})
 
-def createGame():
+def createGame(answer):
     global game
     game += 1
-    g = Game(game, current_user)
+    g = Game(game, current_user, answer)
     games.insert_one(g.__dict__)
 
 def getGame(id):
@@ -286,12 +290,9 @@ def getQuadrants():
 
   return quadrants
 
-def generate_traps_grid():
+def generate_traps_grid(answer):
     quadrants = getQuadrants()
-    riddlesTypes = Riddle.riddleTypes()
     riddleQuestions = Riddle.riddleQuestions()
-
-    riddle_random = random.choice(riddlesTypes)
 
     total = random.randint(1, 5)
 
@@ -308,7 +309,7 @@ def generate_traps_grid():
         traps_result = list(traps.find({'user.role': 'villian'}))
         trap_created = list(filter(lambda x: (x.get('x') == x and x.get('y') == y) , traps_result))
         if len(trap_created) < 1:
-          r_riddle = riddleQuestions.get(riddle_random)[index]
+          r_riddle = riddleQuestions.get(answer)[index]
           trap = Trap(x, y, User.get(users, '5bee0c3ae93f73258b1d49f7'), getGame(current_user.id), r_riddle)
           resp = traps.insert_one(trap.__dict__)
 

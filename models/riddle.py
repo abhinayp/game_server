@@ -45,7 +45,7 @@ class Riddle:
         },
         {
           'question': 'options',
-          'options': options
+          'answer': options
         }
       ]
     }

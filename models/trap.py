@@ -1,5 +1,5 @@
 class Trap:
-  def __init__(self, x, y, user, game, riddle):
+  def __init__(self, x, y, user, game, riddle=None):
     self.x = x
     self.y = y
     self.user = user.__dict__
