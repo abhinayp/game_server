@@ -3,7 +3,7 @@ class Riddle:
     self.answer = answer
 
   def riddleTypes():
-    return ['Hospital', 'GrocerryStore', 'Movies']
+    return ['GrocerryStore', 'Movies']
 
   def riddleQuestions():
     options = Riddle.riddleTypes()
