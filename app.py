@@ -18,6 +18,7 @@ from flask_cors import CORS, cross_origin
 from models.user import User
 from models.trap import Trap
 from models.game import Game
+from models.riddle import Riddle
 
 app = Flask(__name__)
 
@@ -36,6 +37,7 @@ users = db.users #Select the collection name
 traps = db.traps
 detraps = db.detraps
 games = db.games
+riddles = db.riddles
 game = 0
 
 @login_manager.user_loader
@@ -199,6 +201,25 @@ def removeAllGame():
     g = games.delete_many({})
 
 
+# ---------------------- RIDDLES ---------------------------
+
+def createRiddle(answer):
+  riddle = {}
+  rQuestions = Riddle.riddleQuestions()
+  if rQuestions.get(answer) is not None:
+    riddle['answer'] = answer
+    riddle['question'] = rQuestions.get(answer)
+    g = riddles.insert_one(riddle)
+
+def createRiddles():
+  riddleTypes = Riddle.riddleTypes()
+  for rType in riddleTypes:
+    createRiddle(rType)
+
+def removeAllRiddles():
+  riddles.delete_many({})
+
+
 # ------------------- AUTHENTICATION -----------------------
 
 @app.route("/login", methods=['POST'])
@@ -247,24 +268,60 @@ def role_decider():
 
   return role
 
+def getQuadrants():
+  quadrants = []
+  max_x = 16
+  max_y = 16
+
+  for q_x in range(1, 3):
+    for q_y in range(1, 3):
+      qx_start = max_x*(q_x-1)/2
+      qx_end = max_x*(q_x)/2
+
+      qy_start = max_y*(q_y-1)/2
+      qy_end = max_y*(q_y)/2
+
+      q = {'x': {'min': qx_start, 'max': qx_end}, 'y': {'min': qy_start, 'max': qy_end}}
+      quadrants.append(q)
+
+  return quadrants
+
 def generate_traps_grid():
-    total = random.randint(10, 25)
-    for i in range(0, total):
-      x = random.randint(0, 15)
-      y = random.randint(0, 15)
-      traps_result = list(traps.find({'user.role': 'villian'}))
-      trap_created = list(filter(lambda x: (x.get('x') == x and x.get('y') == y) , traps_result))
-      if len(trap_created) < 1:
-        trap = Trap(x, y, User.get(users, '5bee0c3ae93f73258b1d49f7'), getGame(current_user.id))
-        resp = traps.insert_one(trap.__dict__)
+    quadrants = getQuadrants()
+    riddlesTypes = Riddle.riddleTypes()
+    riddleQuestions = Riddle.riddleQuestions()
+
+    riddle_random = random.choice(riddlesTypes)
+
+    total = random.randint(1, 5)
+
+    for index, q in enumerate(quadrants):
+      x_start = q.get('x').get('min')
+      x_end = q.get('x').get('max')
+      y_start = q.get('y').get('min')
+      y_end = q.get('y').get('max')
+
+      for i in range(0, total):
+        x = random.randint(x_start, x_end)
+        y = random.randint(y_start, y_end)
+
+        traps_result = list(traps.find({'user.role': 'villian'}))
+        trap_created = list(filter(lambda x: (x.get('x') == x and x.get('y') == y) , traps_result))
+        if len(trap_created) < 1:
+          r_riddle = riddleQuestions.get(riddle_random)[index]
+          trap = Trap(x, y, User.get(users, '5bee0c3ae93f73258b1d49f7'), getGame(current_user.id), r_riddle)
+          resp = traps.insert_one(trap.__dict__)
 
 def deleteAllTraps():
     traps.delete_many({})
     detraps.delete_many({})
 
-# @app.route("/action3", methods=['POST'])
 deleteAllTraps()
 removeAllGame()
+
+removeAllRiddles()
+createRiddles()
+
 
 if __name__ == "__main__":
   app.run()
