@@ -180,21 +180,79 @@ def finish_game():
 @app.route("/generate_game", methods=['POST'])
 @login_required
 def generate_game():
+  g = createGame()
+  generate_traps_grid()
+  return json_util.dumps(g.__dict__, default=lambda o: o.__dict__)
 
-  riddlesTypes = Riddle.riddleTypes()
-  riddle_random = random.choice(riddlesTypes)
+@app.route("/update_game", methods=['POST'])
+@login_required
+def update_game():
+  req = request.get_json(silent=True)
+  health = req.get('health')
+  points = req.get('points')
+  updated_values = {
+    'health': health,
+    'points': points
+  }
+  print(updated_values)
+  g = games.update_one({"user.id": current_user.id}, {"$set": updated_values})
+  g_game = getGame(current_user.id)
+  return json_util.dumps(g_game, default=lambda o: o.__dict__)
 
-  createGame(riddle_random)
-  generate_traps_grid(riddle_random)
-  return json_util.dumps({'status': True})
+@app.route("/get_game", methods=['GET'])
+@login_required
+def get_game():
+  g = getGame(current_user.id)
+  return json_util.dumps(g, default=lambda o: o.__dict__)
 
-def createGame(answer):
+@app.route("/buy_health", methods=['POST'])
+@login_required
+def buy_health():
+  g = getGame(current_user.id)
+  health = g.get('health')
+  points = g.get('points')
+
+  if points >= 25:
+    points = points - 25
+    health = health + 10
+
+  updated_values = {
+    'health': health,
+    'points': points
+  }
+  g = games.update_one({"user.id": current_user.id}, {"$set": updated_values})
+  g_game = getGame(current_user.id)
+  return json_util.dumps(g_game, default=lambda o: o.__dict__)
+
+@app.route("/buy_wood", methods=['POST'])
+@login_required
+def buy_wood():
+  g = getGame(current_user.id)
+  points = g.get('points')
+  wood = g.get('wood')
+
+  if points >= 25:
+    points = points - 25
+    wood = wood + 10
+
+  updated_values = {
+    'points': points,
+    'wood': wood
+  }
+
+  g = games.update_one({"user.id": current_user.id}, {"$set": updated_values})
+  g_game = getGame(current_user.id)
+  return json_util.dumps(g_game, default=lambda o: o.__dict__)
+
+def createGame():
     global game
     game += 1
-    g = Game(game, current_user, answer)
+    g = Game(game, current_user, 10, 0, 0)
     games.insert_one(g.__dict__)
+    return g
 
 def getGame(id):
+    global game
     g = games.find_one({"user.id": id})
     return g
 
@@ -274,8 +332,8 @@ def role_decider():
 
 def getQuadrants():
   quadrants = []
-  max_x = 16
-  max_y = 16
+  max_x = 14
+  max_y = 14
 
   for q_x in range(1, 3):
     for q_y in range(1, 3):
@@ -290,28 +348,22 @@ def getQuadrants():
 
   return quadrants
 
-def generate_traps_grid(answer):
-    quadrants = getQuadrants()
-    riddleQuestions = Riddle.riddleQuestions()
+def generate_traps_grid():
 
-    total = random.randint(1, 5)
+    total = random.randint(10, 20)
+    max_x = 15
+    max_y = 15
 
-    for index, q in enumerate(quadrants):
-      x_start = q.get('x').get('min')
-      x_end = q.get('x').get('max')
-      y_start = q.get('y').get('min')
-      y_end = q.get('y').get('max')
+    for i in range(0, total):
+      x = random.randint(0, max_x)
+      y = random.randint(0, max_y)
+      points = random.randint(0, 15)
 
-      for i in range(0, total):
-        x = random.randint(x_start, x_end)
-        y = random.randint(y_start, y_end)
-
-        traps_result = list(traps.find({'user.role': 'villian'}))
-        trap_created = list(filter(lambda x: (x.get('x') == x and x.get('y') == y) , traps_result))
-        if len(trap_created) < 1:
-          r_riddle = riddleQuestions.get(answer)[index]
-          trap = Trap(x, y, User.get(users, '5bee0c3ae93f73258b1d49f7'), getGame(current_user.id), r_riddle)
-          resp = traps.insert_one(trap.__dict__)
+      traps_result = list(traps.find({'user.role': 'villian'}))
+      trap_created = list(filter(lambda x: (x.get('x') == x and x.get('y') == y) , traps_result))
+      if len(trap_created) < 1:
+        trap = Trap(x, y, User.get(users, '5bee0c3ae93f73258b1d49f7'), getGame(current_user.id), points)
+        resp = traps.insert_one(trap.__dict__)
 
 def deleteAllTraps():
     traps.delete_many({})
@@ -321,7 +373,7 @@ deleteAllTraps()
 removeAllGame()
 
 removeAllRiddles()
-createRiddles()
+# createRiddles()
 
 
 if __name__ == "__main__":
