@@ -39,6 +39,8 @@ detraps = db.detraps
 games = db.games
 riddles = db.riddles
 game = 0
+max_x = 14
+max_y = 14
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -101,7 +103,7 @@ def get_all_traps ():
 @login_required
 def get_role_traps (role):
   #Display the Uncompleted Tasks
-  traps_result = traps.find({'user.role': role, 'game.user.id': current_user.id})
+  traps_result = traps.find({'game.user.id': current_user.id})
   return json_util.dumps(traps_result, default=lambda o: o.__dict__)
 
 @app.route("/create_trap", methods=['POST'])
@@ -128,10 +130,10 @@ def create_multiple_traps():
   resp = traps.insert_many(trap_array)
   return redirect("/traps")
 
-@app.route("/traps/<id>")
-def get_trap(id):
-  trap = traps.find_one({"_id": ObjectId(id)})
-  return json_util.dumps(trap, default=lambda o: o.__dict__)
+# @app.route("/traps/<id>")
+# def get_trap(id):
+#   trap = traps.find_one({"_id": ObjectId(id)})
+#   return json_util.dumps(trap, default=lambda o: o.__dict__)
 
 def removeTraps(game_id):
   traps.delete_many({'game._id': game_id})
@@ -194,7 +196,22 @@ def update_game():
     'health': health,
     'points': points
   }
-  print(updated_values)
+  g = games.update_one({"user.id": current_user.id}, {"$set": updated_values})
+  g_game = getGame(current_user.id)
+  return json_util.dumps(g_game, default=lambda o: o.__dict__)
+
+@app.route("/update_current_location", methods=['POST'])
+@login_required
+def update_current_location():
+  req = request.get_json(silent=True)
+  x = req.get('x')
+  y = req.get('y')
+  updated_values = {
+    'current_location': {
+      'x': x,
+      'y': y
+    }
+  }
   g = games.update_one({"user.id": current_user.id}, {"$set": updated_values})
   g_game = getGame(current_user.id)
   return json_util.dumps(g_game, default=lambda o: o.__dict__)
@@ -214,7 +231,7 @@ def buy_health():
 
   if points >= 25:
     points = points - 25
-    health = health + 10
+    health = health + 8
 
   updated_values = {
     'health': health,
@@ -244,10 +261,29 @@ def buy_wood():
   g_game = getGame(current_user.id)
   return json_util.dumps(g_game, default=lambda o: o.__dict__)
 
+
+@app.route("/skip_intro", methods=['POST'])
+@login_required
+def skip_intro():
+  g = getGame(current_user.id)
+
+  updated_values = {
+    'intro': False,
+  }
+
+  g = games.update_one({"user.id": current_user.id}, {"$set": updated_values})
+  g_game = getGame(current_user.id)
+  return json_util.dumps(g_game, default=lambda o: o.__dict__)
+
+
 def createGame():
     global game
     game += 1
-    g = Game(game, current_user, 10, 0, 0)
+    current_location = {
+      'x': max_x/2,
+      'y': max_y/2
+    }
+    g = Game(game, current_user, 10, 0, 0, current_location, True)
     games.insert_one(g.__dict__)
     return g
 
@@ -332,8 +368,6 @@ def role_decider():
 
 def getQuadrants():
   quadrants = []
-  max_x = 14
-  max_y = 14
 
   for q_x in range(1, 3):
     for q_y in range(1, 3):
@@ -357,12 +391,12 @@ def generate_traps_grid():
     for i in range(0, total):
       x = random.randint(0, max_x)
       y = random.randint(0, max_y)
-      points = random.randint(0, 15)
+      points = random.randint(0, 80)
 
       traps_result = list(traps.find({'user.role': 'villian'}))
       trap_created = list(filter(lambda x: (x.get('x') == x and x.get('y') == y) , traps_result))
       if len(trap_created) < 1:
-        trap = Trap(x, y, User.get(users, '5bee0c3ae93f73258b1d49f7'), getGame(current_user.id), points)
+        trap = Trap(x, y, None, getGame(current_user.id), points)
         resp = traps.insert_one(trap.__dict__)
 
 def deleteAllTraps():
